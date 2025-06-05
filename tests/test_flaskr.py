@@ -144,6 +144,67 @@ class TestFlaskr:
             # the database state is not guaranteed. In a real-world scenario,
             # you might want to set up a known database state before running this test.
 
+    def test_remove_entry(self, client):
+        """
+        Test removing an entry when logged in.
+        
+        This test verifies that:
+        1. A logged-in user can add an entry
+        2. The entry appears in the entries list
+        3. The user can delete the entry
+        4. The entry is removed from the database
+        """
+        # Log in
+        client.post('/login', data={
+            'username': app.config['USERNAME'],
+            'password': app.config['PASSWORD']
+        })
+        
+        # Add an entry
+        title = 'Test Entry to Remove'
+        text = 'This entry will be removed'
+        client.post('/add', data={'title': title, 'text': text})
+        
+        # Check that the entry was added
+        response = client.get('/')
+        assert title.encode() in response.data
+        assert text.encode() in response.data
+        
+        # Get the entry ID from the database
+        with app.app_context():
+            db = get_db()
+            entry = db.execute('SELECT id FROM entries WHERE title = ?', [title]).fetchone()
+            assert entry is not None
+            entry_id = entry['id']
+        
+        # Remove the entry
+        response = client.post(f'/remove/{entry_id}', follow_redirects=True)
+        assert response.status_code == 200
+        assert b'Entry was successfully deleted' in response.data
+        
+        # Verify the entry is gone
+        response = client.get('/')
+        assert title.encode() not in response.data
+        assert text.encode() not in response.data
+        
+        # Verify the entry is removed from the database
+        with app.app_context():
+            db = get_db()
+            entry = db.execute('SELECT id FROM entries WHERE title = ?', [title]).fetchone()
+            assert entry is None
+
+    def test_remove_entry_unauthorized(self, client):
+        """
+        Test that unauthorized users cannot remove entries.
+        
+        This test verifies that:
+        1. A user who is not logged in cannot delete entries
+        2. The attempt results in a 401 Unauthorized response
+        """
+        # Try to remove an entry without logging in
+        response = client.post('/remove/1')
+        assert response.status_code == 401
+
 
 
 class AuthActions(object):
